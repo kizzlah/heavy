@@ -36,7 +36,10 @@ struct HeavyEditorView: View {
                     .padding()
             }
         }
-        .alert("Heavy", isPresented: .constant(store.lastErrorMessage != nil), actions: {
+        .alert("Heavy", isPresented: Binding(
+            get: { store.lastErrorMessage != nil },
+            set: { if !$0 { store.lastErrorMessage = nil } }
+        ), actions: {
             Button("OK") { store.lastErrorMessage = nil }
         }, message: {
             Text(store.lastErrorMessage ?? "")
@@ -246,12 +249,18 @@ private struct BlockCard: View {
                     .frame(minHeight: 120)
             case .image:
                 if let image = block.image,
-                   let nsImage = NSImage(data: image.data) {
+                   let nsImage = NSImage(data: image.data),
+                   !image.data.isEmpty {
                     Image(nsImage: nsImage)
                         .resizable()
                         .scaledToFit()
                         .frame(maxHeight: 280)
                     Text(image.filename)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if let image = block.image, let source = image.source {
+                    ContentUnavailableView("External image reference", systemImage: "photo.on.rectangle")
+                    Text(source)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {

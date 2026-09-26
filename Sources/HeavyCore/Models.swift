@@ -12,12 +12,14 @@ public struct EmbeddedImage: Identifiable, Codable, Equatable, Sendable {
     public var filename: String
     public var format: ImageFormat
     public var data: Data
+    public var source: String?
 
-    public init(id: UUID = UUID(), filename: String, format: ImageFormat, data: Data) {
+    public init(id: UUID = UUID(), filename: String, format: ImageFormat, data: Data, source: String? = nil) {
         self.id = id
         self.filename = filename
         self.format = format
         self.data = data
+        self.source = source
     }
 }
 
@@ -171,7 +173,7 @@ public struct EditorDocument: Identifiable, Codable, Equatable, Sendable {
     }
 
     public func allTextBlocks() -> [ContentBlock] {
-        sections.flatMap(\ .blocks).filter { $0.style != .image }
+        sections.flatMap(\.blocks).filter { $0.style != .image }
     }
 
     public func plainText() -> String {

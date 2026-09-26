@@ -113,7 +113,7 @@ public struct DocumentTranscoder: Sendable {
             return "```\n\(block.text)\n```"
         case .image:
             if let image = block.image {
-                return "![\(image.filename)](\(image.filename))"
+                return "![\(image.filename)](\(image.source ?? image.filename))"
             }
             return "![image]()"
         case .paragraph:
@@ -134,6 +134,9 @@ public struct DocumentTranscoder: Sendable {
             return "<pre><code>\(escapeHTML(block.text))</code></pre>"
         case .image:
             guard let image = block.image else { return "<figure></figure>" }
+            if let source = image.source, image.data.isEmpty {
+                return "<figure><img alt=\"\(escapeHTML(image.filename))\" src=\"\(escapeHTML(source))\"></figure>"
+            }
             let mediaType = image.format == .png ? "image/png" : "image/jpeg"
             let base64 = image.data.base64EncodedString()
             return "<figure><img alt=\"\(escapeHTML(image.filename))\" src=\"data:\(mediaType);base64,\(base64)\"></figure>"
@@ -150,7 +153,7 @@ public struct DocumentTranscoder: Sendable {
             .replacingOccurrences(of: "\"", with: "&quot;")
     }
 
-    private func importPlainText(_ text: String, fileName: String, isMarkdown: Bool) -> EditorDocument {
+    func importPlainText(_ text: String, fileName: String, isMarkdown: Bool) -> EditorDocument {
         let sections = splitSections(in: text, isMarkdown: isMarkdown).map { title, lines in
             ContentSection(
                 title: title,
@@ -222,8 +225,9 @@ public struct DocumentTranscoder: Sendable {
                 let isChecked = line.hasPrefix("- [x] ")
                 blocks.append(ContentBlock(style: .checklist, text: String(line.dropFirst(6)), checked: isChecked))
             } else if isMarkdown && line.hasPrefix("![") {
-                let name = line.split(separator: "]", maxSplits: 1).first?.dropFirst() ?? "image"
-                blocks.append(ContentBlock(style: .image, text: "", image: EmbeddedImage(filename: String(name), format: .png, data: Data())))
+                let (filename, source) = parseMarkdownImageReference(in: line)
+                let format = inferredImageFormat(from: source)
+                blocks.append(ContentBlock(style: .image, text: "", image: EmbeddedImage(filename: filename, format: format, data: Data(), source: source)))
             } else {
                 blocks.append(ContentBlock(style: .paragraph, text: rawLine))
             }
@@ -258,24 +262,28 @@ public struct DocumentTranscoder: Sendable {
     }
 
     private func parseHTMLBlocks(from html: String) -> [ContentBlock] {
-        let patterns: [(String, (String) -> ContentBlock)] = [
-            (#"<h3>(.*?)</h3>"#, { ContentBlock(style: .heading, text: decodeHTML($0)) }),
-            (#"<blockquote>(.*?)</blockquote>"#, { ContentBlock(style: .quote, text: decodeHTML($0)) }),
-            (#"<pre><code>(.*?)</code></pre>"#, { ContentBlock(style: .code, text: decodeHTML($0)) }),
-            (#"<p>(.*?)</p>"#, { ContentBlock(style: .paragraph, text: decodeHTML($0)) }),
-            (#"<label><input type=\"checkbox\" disabled( checked)?>\s*(.*?)</label>"#, {
-                let cleaned = decodeHTML($0.replacingOccurrences(of: " checked", with: ""))
-                return ContentBlock(style: .checklist, text: cleaned)
-            }),
-        ]
-
+        let pattern = #"<h3>.*?</h3>|<blockquote>.*?</blockquote>|<pre><code>.*?</code></pre>|<p>.*?</p>|<label><input type=\"checkbox\" disabled(?: checked)?>.*?</label>|<figure>.*?</figure>"#
+        let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators, .caseInsensitive])
+        let matches = regex?.matches(in: html, range: NSRange(html.startIndex..., in: html)) ?? []
         var blocks: [ContentBlock] = []
-        for (pattern, builder) in patterns {
-            let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators, .caseInsensitive])
-            let matches = regex?.matches(in: html, range: NSRange(html.startIndex..., in: html)) ?? []
-            for match in matches {
-                guard let range = Range(match.range(at: match.numberOfRanges - 1), in: html) else { continue }
-                blocks.append(builder(String(html[range])))
+        for match in matches {
+            guard let range = Range(match.range, in: html) else { continue }
+            let fragment = String(html[range])
+            if fragment.lowercased().hasPrefix("<h3>") {
+                blocks.append(ContentBlock(style: .heading, text: decodeHTML(stripWrappingTag(from: fragment, tag: "h3"))))
+            } else if fragment.lowercased().hasPrefix("<blockquote>") {
+                blocks.append(ContentBlock(style: .quote, text: decodeHTML(stripWrappingTag(from: fragment, tag: "blockquote"))))
+            } else if fragment.lowercased().hasPrefix("<pre><code>") {
+                blocks.append(ContentBlock(style: .code, text: decodeHTML(fragment.replacingOccurrences(of: "<pre><code>", with: "").replacingOccurrences(of: "</code></pre>", with: ""))))
+            } else if fragment.lowercased().hasPrefix("<p>") {
+                blocks.append(ContentBlock(style: .paragraph, text: decodeHTML(stripWrappingTag(from: fragment, tag: "p"))))
+            } else if fragment.lowercased().hasPrefix("<label>") {
+                let checked = fragment.contains(" checked")
+                let text = fragment.replacingOccurrences(of: #"<label><input type=\"checkbox\" disabled(?: checked)?>\s*"#, with: "", options: .regularExpression)
+                    .replacingOccurrences(of: "</label>", with: "")
+                blocks.append(ContentBlock(style: .checklist, text: decodeHTML(text), checked: checked))
+            } else if fragment.lowercased().hasPrefix("<figure>"), let imageBlock = parseHTMLImageBlock(from: fragment) {
+                blocks.append(imageBlock)
             }
         }
 
@@ -294,6 +302,43 @@ public struct DocumentTranscoder: Sendable {
             .replacingOccurrences(of: "&gt;", with: ">")
             .replacingOccurrences(of: "&lt;", with: "<")
             .replacingOccurrences(of: "&amp;", with: "&")
+    }
+
+    private func stripWrappingTag(from fragment: String, tag: String) -> String {
+        fragment
+            .replacingOccurrences(of: "<\(tag)>", with: "", options: [.caseInsensitive])
+            .replacingOccurrences(of: "</\(tag)>", with: "", options: [.caseInsensitive])
+    }
+
+    private func parseMarkdownImageReference(in line: String) -> (filename: String, source: String) {
+        let components = line.split(separator: "](", maxSplits: 1).map(String.init)
+        let altText = components.first?.replacingOccurrences(of: "![", with: "") ?? "image"
+        let source = components.count > 1 ? components[1].dropLast() : Substring(altText)
+        let sourceString = String(source)
+        let filename = URL(fileURLWithPath: sourceString).lastPathComponent
+        return (filename.isEmpty ? altText : filename, sourceString)
+    }
+
+    private func inferredImageFormat(from source: String) -> ImageFormat {
+        source.lowercased().hasSuffix(".jpg") || source.lowercased().hasSuffix(".jpeg") ? .jpg : .png
+    }
+
+    private func parseHTMLImageBlock(from fragment: String) -> ContentBlock? {
+        guard let alt = extractFirstMatch(in: fragment, pattern: #"alt=\"(.*?)\""#),
+              let source = extractFirstMatch(in: fragment, pattern: #"src=\"(.*?)\""#) else {
+            return nil
+        }
+
+        if source.hasPrefix("data:"),
+           let commaIndex = source.firstIndex(of: ",") {
+            let metadata = String(source[..<commaIndex])
+            let base64 = String(source[source.index(after: commaIndex)...])
+            let format: ImageFormat = metadata.contains("image/jpeg") ? .jpg : .png
+            let data = Data(base64Encoded: base64) ?? Data()
+            return ContentBlock(style: .image, image: EmbeddedImage(filename: decodeHTML(alt), format: format, data: data))
+        }
+
+        return ContentBlock(style: .image, image: EmbeddedImage(filename: decodeHTML(alt), format: inferredImageFormat(from: source), data: Data(), source: source))
     }
 
     private func exportJavaScript(_ document: EditorDocument) throws -> Data {

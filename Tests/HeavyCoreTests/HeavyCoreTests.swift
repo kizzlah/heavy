@@ -25,14 +25,32 @@ import Testing
 
 @Test func javascriptRoundTripPreservesDocument() throws {
     let transcoder = DocumentTranscoder()
-    let document = EditorDocument.sample()
+    let image = EmbeddedImage(filename: "cover.png", format: .png, data: Data([0x89, 0x50]), source: "cover.png")
+    let document = EditorDocument(
+        title: "Draft",
+        sections: [
+            ContentSection(
+                title: "Intro",
+                blocks: [
+                    ContentBlock(style: .paragraph, text: "Lead"),
+                    ContentBlock(style: .checklist, text: "Done", checked: true),
+                    ContentBlock(style: .image, image: image),
+                ]
+            )
+        ],
+        aiConfiguration: AIConfiguration(
+            isEnabled: true,
+            preferredModel: "gpt-5.6-luna",
+            mcp: MCPServerConfiguration(isEnabled: true, endpoint: "http://localhost:3000", enabledSkills: ["Outline"])
+        ),
+        createdAt: Date(timeIntervalSince1970: 1_234),
+        updatedAt: Date(timeIntervalSince1970: 5_678)
+    )
 
     let exported = try transcoder.export(document, format: .javascript)
     let imported = try transcoder.import(exported, format: .javascript, fileName: "heavy.js")
 
-    #expect(imported.title == document.title)
-    #expect(imported.sections.count == document.sections.count)
-    #expect(imported.sections.first?.blocks.first?.text == document.sections.first?.blocks.first?.text)
+    #expect(imported == document)
 }
 
 @Test func movingBlockAcrossSectionsReordersDocument() {

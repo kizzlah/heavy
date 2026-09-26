@@ -12,9 +12,9 @@ Heavy is a Swift-based macOS writing app with a block editor designed for long-f
 
 ## Package layout
 
-- `/home/runner/work/heavy/heavy/Sources/HeavyCore`: shared document model, format transcoding, and MCP pipeline
-- `/home/runner/work/heavy/heavy/Sources/heavy`: macOS SwiftUI app entry point and editor UI
-- `/home/runner/work/heavy/heavy/Tests/HeavyCoreTests`: core behavior tests
+- `Sources/HeavyCore`: shared document model, format transcoding, and MCP pipeline
+- `Sources/heavy`: macOS SwiftUI app entry point and editor UI
+- `Tests/HeavyCoreTests`: core behavior tests
 
 ## Development
 
