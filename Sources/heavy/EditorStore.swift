@@ -107,7 +107,14 @@ final class EditorStore: ObservableObject {
 
     func importDocument() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.plainText, .rtf, .pdf, .html, UTType(filenameExtension: "md")!, UTType(filenameExtension: "js")!]
+        panel.allowedContentTypes = [
+            .plainText,
+            .rtf,
+            .pdf,
+            .html,
+            UTType(filenameExtension: "md"),
+            UTType(filenameExtension: "js"),
+        ].compactMap { $0 }
         panel.allowsMultipleSelection = false
 
         guard panel.runModal() == .OK, let url = panel.url else { return }

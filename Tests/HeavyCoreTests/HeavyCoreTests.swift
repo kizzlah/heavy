@@ -27,7 +27,7 @@ import Testing
     let markdown = """
     ## Draft
 
-    ```
+    ```swift
     let message = "Heavy"
     print(message)
     ```
@@ -88,6 +88,30 @@ import Testing
 
     #expect(document.sections[0].blocks.isEmpty)
     #expect(document.sections[1].blocks.map(\.text) == ["B", "A"])
+}
+
+@Test func movingBlockWithinSectionPreservesRequestedOrder() {
+    var document = EditorDocument(
+        title: "Draft",
+        sections: [
+            ContentSection(
+                title: "One",
+                blocks: [
+                    ContentBlock(style: .paragraph, text: "A"),
+                    ContentBlock(style: .paragraph, text: "B"),
+                    ContentBlock(style: .paragraph, text: "C"),
+                ]
+            )
+        ]
+    )
+
+    let sectionID = document.sections[0].id
+    let blockID = document.sections[0].blocks[0].id
+    let targetID = document.sections[0].blocks[2].id
+
+    document.moveBlock(blockID: blockID, from: sectionID, to: sectionID, before: targetID)
+
+    #expect(document.sections[0].blocks.map(\.text) == ["B", "A", "C"])
 }
 
 @Test func builtInProcessorTrimsWhitespace() {

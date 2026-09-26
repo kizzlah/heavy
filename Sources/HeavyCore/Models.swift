@@ -160,10 +160,22 @@ public struct EditorDocument: Identifiable, Codable, Equatable, Sendable {
             return
         }
 
+        if targetBlockID == blockID {
+            return
+        }
+
+        let originalTargetIndex = targetBlockID.flatMap { targetBlockID in
+            sections[destinationSectionIndex].blocks.firstIndex(where: { $0.id == targetBlockID })
+        }
         let block = sections[sourceSectionIndex].blocks.remove(at: sourceBlockIndex)
 
-        if let targetBlockID,
-           let destinationIndex = sections[destinationSectionIndex].blocks.firstIndex(where: { $0.id == targetBlockID }) {
+        if let originalTargetIndex {
+            let destinationIndex: Int
+            if sourceSectionIndex == destinationSectionIndex, sourceBlockIndex < originalTargetIndex {
+                destinationIndex = max(0, originalTargetIndex - 1)
+            } else {
+                destinationIndex = originalTargetIndex
+            }
             sections[destinationSectionIndex].blocks.insert(block, at: destinationIndex)
         } else {
             sections[destinationSectionIndex].blocks.append(block)

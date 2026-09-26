@@ -201,12 +201,15 @@ public struct DocumentTranscoder: Sendable {
         for rawLine in lines {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
 
-            if isMarkdown && line == "```" {
-                if isInsideCodeFence {
-                    blocks.append(ContentBlock(style: .code, text: codeBuffer.joined(separator: "\n")))
-                    codeBuffer.removeAll()
-                }
-                isInsideCodeFence.toggle()
+            if isMarkdown && isInsideCodeFence && line == "```" {
+                blocks.append(ContentBlock(style: .code, text: codeBuffer.joined(separator: "\n")))
+                codeBuffer.removeAll()
+                isInsideCodeFence = false
+                continue
+            }
+
+            if isMarkdown && !isInsideCodeFence && line.hasPrefix("```") {
+                isInsideCodeFence = true
                 continue
             }
 
@@ -235,6 +238,10 @@ public struct DocumentTranscoder: Sendable {
 
         if blocks.isEmpty {
             blocks = [ContentBlock(style: .paragraph)]
+        }
+
+        if isInsideCodeFence, !codeBuffer.isEmpty {
+            blocks.append(ContentBlock(style: .code, text: codeBuffer.joined(separator: "\n")))
         }
 
         return blocks
