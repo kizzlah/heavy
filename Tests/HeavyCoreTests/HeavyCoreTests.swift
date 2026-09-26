@@ -11,6 +11,7 @@ import Testing
                 blocks: [
                     ContentBlock(style: .heading, text: "Welcome"),
                     ContentBlock(style: .checklist, text: "Ship build", checked: true),
+                    ContentBlock(style: .checklist, text: "Review notes", checked: false),
                 ]
             )
         ]
@@ -21,6 +22,7 @@ import Testing
     #expect(markdown.contains("## Intro"))
     #expect(markdown.contains("### Welcome"))
     #expect(markdown.contains("- [x] Ship build"))
+    #expect(markdown.contains("- [ ] Review notes"))
 }
 
 @Test func markdownImportPreservesFencedCodeBlocks() throws {

@@ -141,6 +141,9 @@ public struct EditorDocument: Identifiable, Codable, Equatable, Sendable {
 
     public mutating func moveSection(sectionID: UUID, before targetID: UUID?) {
         guard let sourceIndex = sections.firstIndex(where: { $0.id == sectionID }) else { return }
+        if targetID == sectionID {
+            return
+        }
         let section = sections.remove(at: sourceIndex)
 
         if let targetID,

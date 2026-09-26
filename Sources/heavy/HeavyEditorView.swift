@@ -135,10 +135,16 @@ struct HeavyEditorView: View {
             ))
             .textFieldStyle(.roundedBorder)
             Picker("Skill", selection: $store.selectedSkillName) {
-                ForEach(store.availableSkills) { skill in
-                    Text(skill.name).tag(skill.name)
+                if store.availableSkills.isEmpty {
+                    Text("No skills available").tag("")
+                } else {
+                    ForEach(store.availableSkills) { skill in
+                        Text(skill.name).tag(skill.name)
+                    }
                 }
             }
+            .pickerStyle(.menu)
+            .disabled(store.availableSkills.isEmpty)
         }
     }
 

@@ -262,7 +262,7 @@ public struct DocumentTranscoder: Sendable {
         }
 
         if sections.isEmpty {
-            return EditorDocument(title: sanitizedTitle(fileName), sections: [ContentSection(title: "Imported", blocks: [ContentBlock(style: .paragraph, text: stripHTML(from: html))])])
+            return EditorDocument(title: sanitizedTitle(fileName), sections: [ContentSection(title: "Imported", blocks: [ContentBlock(style: .paragraph, text: decodeHTML(stripHTML(from: html)))])])
         }
 
         return EditorDocument(title: sanitizedTitle(fileName), sections: sections)
@@ -357,8 +357,7 @@ public struct DocumentTranscoder: Sendable {
     }
 
     private func importJavaScript(_ script: String, fileName: String) throws -> EditorDocument {
-        let pattern = #"export\s+(?:const|let|var)\s+heavyDocument\s*=\s*(\{.*\})\s*;?"#
-        guard let json = extractFirstMatch(in: script, pattern: pattern, options: [.dotMatchesLineSeparators]) else {
+        guard let json = extractJSONObjectAssigned(to: "heavyDocument", from: script) else {
             throw TranscoderError.invalidJavaScriptPayload
         }
 
@@ -375,6 +374,49 @@ public struct DocumentTranscoder: Sendable {
         }
 
         return String(input[range])
+    }
+
+    private func extractJSONObjectAssigned(to identifier: String, from script: String) -> String? {
+        guard let identifierRange = script.range(of: identifier),
+              let equalsIndex = script[identifierRange.upperBound...].firstIndex(of: "="),
+              let objectStart = script[equalsIndex...].firstIndex(of: "{") else {
+            return nil
+        }
+
+        var depth = 0
+        var currentIndex = objectStart
+        var isEscaping = false
+        var stringDelimiter: Character?
+
+        while currentIndex < script.endIndex {
+            let character = script[currentIndex]
+
+            if isEscaping {
+                isEscaping = false
+            } else if let activeDelimiter = stringDelimiter {
+                if character == "\\" {
+                    isEscaping = true
+                } else if character == activeDelimiter {
+                    stringDelimiter = nil
+                }
+            } else {
+                if character == "\"" || character == "'" {
+                    stringDelimiter = character
+                } else if character == "{" {
+                    depth += 1
+                } else if character == "}" {
+                    depth -= 1
+                    if depth == 0 {
+                        let endIndex = script.index(after: currentIndex)
+                        return String(script[objectStart..<endIndex])
+                    }
+                }
+            }
+
+            currentIndex = script.index(after: currentIndex)
+        }
+
+        return nil
     }
 
     private func sanitizedTitle(_ fileName: String) -> String {
