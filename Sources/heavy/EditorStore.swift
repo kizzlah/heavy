@@ -200,7 +200,13 @@ final class EditorStore: ObservableObject {
         let data = try Data(contentsOf: url)
         let block = ContentBlock(style: .image, image: EmbeddedImage(filename: url.lastPathComponent, format: format, data: data))
         let section = ContentSection(title: sanitizedSectionTitle(for: url), blocks: [block])
-        document = EditorDocument(title: sanitizedSectionTitle(for: url), sections: [section], aiConfiguration: document.aiConfiguration)
+        document = EditorDocument(
+            id: document.id,
+            title: sanitizedSectionTitle(for: url),
+            sections: [section],
+            aiConfiguration: document.aiConfiguration,
+            createdAt: document.createdAt
+        )
         selectedSectionID = section.id
     }
 

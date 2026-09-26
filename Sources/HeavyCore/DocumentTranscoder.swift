@@ -372,7 +372,12 @@ public struct DocumentTranscoder: Sendable {
         let altText = components.first?.replacingOccurrences(of: "![", with: "") ?? "image"
         let source = components.count > 1 ? components[1].dropLast() : Substring(altText)
         let sourceString = String(source)
-        let filename = URL(fileURLWithPath: sourceString).lastPathComponent
+        let filename: String
+        if let remoteURL = URL(string: sourceString), let lastPathComponent = remoteURL.pathComponents.last, !lastPathComponent.isEmpty {
+            filename = lastPathComponent
+        } else {
+            filename = sourceString.split(separator: "/").last.map(String.init) ?? sourceString
+        }
         return (filename.isEmpty ? altText : filename, sourceString)
     }
 
@@ -536,6 +541,10 @@ public struct DocumentTranscoder: Sendable {
     }
 
     private func sanitizedTitle(_ fileName: String) -> String {
-        URL(fileURLWithPath: fileName).deletingPathExtension().lastPathComponent
+        let trimmed = fileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawComponent = trimmed.split(separator: "/").last.map(String.init) ?? trimmed
+        let withoutQuery = rawComponent.split(separator: "?").first.map(String.init) ?? rawComponent
+        let title = (withoutQuery as NSString).deletingPathExtension
+        return title.isEmpty ? trimmed : title
     }
 }

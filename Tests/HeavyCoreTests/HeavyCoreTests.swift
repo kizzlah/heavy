@@ -10,6 +10,7 @@ import Testing
                 title: "Intro",
                 blocks: [
                     ContentBlock(style: .heading, text: "Welcome"),
+                    ContentBlock(style: .code, text: "print(\"Heavy\")", codeLanguage: "swift"),
                     ContentBlock(style: .checklist, text: "Ship build", checked: true),
                     ContentBlock(style: .checklist, text: "Review notes", checked: false),
                 ]
@@ -21,6 +22,7 @@ import Testing
 
     #expect(markdown.contains("## Intro"))
     #expect(markdown.contains("### Welcome"))
+    #expect(markdown.contains("```swift"))
     #expect(markdown.contains("- [x] Ship build"))
     #expect(markdown.contains("- [ ] Review notes"))
 }
@@ -40,6 +42,7 @@ import Testing
     #expect(document.sections.count == 1)
     #expect(document.sections[0].blocks.count == 1)
     #expect(document.sections[0].blocks[0].style == .code)
+    #expect(document.sections[0].blocks[0].codeLanguage == "swift")
     #expect(document.sections[0].blocks[0].text == "let message = \"Heavy\"\nprint(message)")
 }
 
