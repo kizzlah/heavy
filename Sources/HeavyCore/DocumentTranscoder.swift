@@ -244,12 +244,12 @@ public struct DocumentTranscoder: Sendable {
             }
         }
 
-        if blocks.isEmpty {
-            blocks = [ContentBlock(style: .paragraph)]
-        }
-
         if isInsideCodeFence, !codeBuffer.isEmpty {
             blocks.append(ContentBlock(style: .code, text: codeBuffer.joined(separator: "\n")))
+        }
+
+        if blocks.isEmpty {
+            blocks = [ContentBlock(style: .paragraph)]
         }
 
         return blocks
@@ -372,7 +372,7 @@ public struct DocumentTranscoder: Sendable {
     }
 
     private func importJavaScript(_ script: String, fileName: String) throws -> EditorDocument {
-        guard let json = extractJSONObjectAssigned(to: "heavyDocument", from: script) else {
+        guard let json = extractHeavyDocumentJSON(from: script) else {
             throw TranscoderError.invalidJavaScriptPayload
         }
 
@@ -391,10 +391,12 @@ public struct DocumentTranscoder: Sendable {
         return String(input[range])
     }
 
-    private func extractJSONObjectAssigned(to identifier: String, from script: String) -> String? {
-        guard let identifierRange = script.range(of: identifier),
-              let equalsIndex = script[identifierRange.upperBound...].firstIndex(of: "="),
-              let objectStart = script[equalsIndex...].firstIndex(of: "{") else {
+    private func extractHeavyDocumentJSON(from script: String) -> String? {
+        let declarationPattern = #"(?:export\s+)?(?:const|let|var)\s+heavyDocument\s*="#
+        let regex = try? NSRegularExpression(pattern: declarationPattern)
+        guard let match = regex?.firstMatch(in: script, range: NSRange(script.startIndex..., in: script)),
+              let declarationRange = Range(match.range, in: script),
+              let objectStart = script[declarationRange.upperBound...].firstIndex(of: "{") else {
             return nil
         }
 

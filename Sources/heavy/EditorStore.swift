@@ -156,11 +156,18 @@ final class EditorStore: ObservableObject {
             return
         }
 
-        var pipeline = ModularContentProcessor(processors: [TrimWhitespaceProcessor()])
-        if selectedSkillName == "Outline" {
+        switch selectedSkillName {
+        case "Outline":
+            var pipeline = ModularContentProcessor(processors: [TrimWhitespaceProcessor()])
             pipeline.register(PromoteFirstParagraphProcessor())
+            document = pipeline.run(on: document)
+        case "Polish":
+            document = ModularContentProcessor(processors: [TrimWhitespaceProcessor()]).run(on: document)
+        case "Summarize":
+            lastErrorMessage = "Summarize requires an AI or MCP-backed implementation."
+        default:
+            lastErrorMessage = "The selected skill is not implemented."
         }
-        document = pipeline.run(on: document)
     }
 
     func resolveFormat(for url: URL) throws -> ContentFormat {

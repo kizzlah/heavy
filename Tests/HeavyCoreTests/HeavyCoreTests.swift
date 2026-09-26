@@ -43,6 +43,21 @@ import Testing
     #expect(document.sections[0].blocks[0].text == "let message = \"Heavy\"\nprint(message)")
 }
 
+@Test func markdownImportPreservesUnterminatedFencedCodeBlocks() throws {
+    let markdown = """
+    ## Draft
+
+    ```
+    print("Heavy")
+    """
+
+    let document = try DocumentTranscoder().import(Data(markdown.utf8), format: .markdown, fileName: "draft.md")
+
+    #expect(document.sections[0].blocks.count == 1)
+    #expect(document.sections[0].blocks[0].style == .code)
+    #expect(document.sections[0].blocks[0].text == "print(\"Heavy\")")
+}
+
 @Test func javascriptRoundTripPreservesDocument() throws {
     let transcoder = DocumentTranscoder()
     let image = EmbeddedImage(filename: "cover.png", format: .png, data: Data([0x89, 0x50]), source: "cover.png")
