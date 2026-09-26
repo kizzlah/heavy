@@ -130,3 +130,27 @@ import Testing
     #expect(document.sections[0].title == "Intro")
     #expect(document.sections[0].blocks[0].text == "body")
 }
+
+@Test func promoteFirstParagraphProcessorOnlyPromotesLeadParagraph() {
+    let document = EditorDocument(
+        title: "Draft",
+        sections: [
+            ContentSection(
+                title: "Intro",
+                blocks: [
+                    ContentBlock(style: .quote, text: "Quote"),
+                    ContentBlock(style: .paragraph, text: ""),
+                    ContentBlock(style: .paragraph, text: "Lead paragraph"),
+                    ContentBlock(style: .paragraph, text: "Body paragraph"),
+                ]
+            )
+        ]
+    )
+
+    let processed = PromoteFirstParagraphProcessor().process(document: document)
+
+    #expect(processed.sections[0].blocks[0].style == .quote)
+    #expect(processed.sections[0].blocks[1].style == .paragraph)
+    #expect(processed.sections[0].blocks[2].style == .heading)
+    #expect(processed.sections[0].blocks[3].style == .paragraph)
+}

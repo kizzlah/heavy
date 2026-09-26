@@ -3,6 +3,7 @@ import Foundation
 public enum ImageFormat: String, Codable, CaseIterable, Sendable {
     case jpg
     case png
+    case external
 
     public var fileExtension: String { rawValue }
 }

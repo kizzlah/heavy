@@ -137,7 +137,15 @@ public struct DocumentTranscoder: Sendable {
             if let source = image.source, image.data.isEmpty {
                 return "<figure><img alt=\"\(escapeHTML(image.filename))\" src=\"\(escapeHTML(source))\"></figure>"
             }
-            let mediaType = image.format == .png ? "image/png" : "image/jpeg"
+            let mediaType: String
+            switch image.format {
+            case .png:
+                mediaType = "image/png"
+            case .jpg:
+                mediaType = "image/jpeg"
+            case .external:
+                mediaType = "application/octet-stream"
+            }
             let base64 = image.data.base64EncodedString()
             return "<figure><img alt=\"\(escapeHTML(image.filename))\" src=\"data:\(mediaType);base64,\(base64)\"></figure>"
         case .paragraph:
@@ -224,8 +232,8 @@ public struct DocumentTranscoder: Sendable {
                 blocks.append(ContentBlock(style: .heading, text: String(line.dropFirst(4))))
             } else if isMarkdown && line.hasPrefix("> ") {
                 blocks.append(ContentBlock(style: .quote, text: String(line.dropFirst(2))))
-            } else if isMarkdown && (line.hasPrefix("- [ ] ") || line.hasPrefix("- [x] ")) {
-                let isChecked = line.hasPrefix("- [x] ")
+            } else if isMarkdown && (line.hasPrefix("- [ ] ") || line.hasPrefix("- [x] ") || line.hasPrefix("- [X] ")) {
+                let isChecked = line.hasPrefix("- [x] ") || line.hasPrefix("- [X] ")
                 blocks.append(ContentBlock(style: .checklist, text: String(line.dropFirst(6)), checked: isChecked))
             } else if isMarkdown && line.hasPrefix("![") {
                 let (filename, source) = parseMarkdownImageReference(in: line)
@@ -327,7 +335,14 @@ public struct DocumentTranscoder: Sendable {
     }
 
     private func inferredImageFormat(from source: String) -> ImageFormat {
-        source.lowercased().hasSuffix(".jpg") || source.lowercased().hasSuffix(".jpeg") ? .jpg : .png
+        let lowercased = source.lowercased()
+        if lowercased.hasSuffix(".jpg") || lowercased.hasSuffix(".jpeg") {
+            return .jpg
+        }
+        if lowercased.hasSuffix(".png") {
+            return .png
+        }
+        return .external
     }
 
     private func parseHTMLImageBlock(from fragment: String) -> ContentBlock? {

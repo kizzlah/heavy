@@ -88,6 +88,10 @@ final class EditorStore: ObservableObject {
         document.moveBlock(blockID: blockID, from: sectionID, to: destinationSectionID, before: targetBlockID)
     }
 
+    func moveBlockToEnd(sectionID: UUID, blockID: UUID) {
+        document.moveBlock(blockID: blockID, from: sectionID, to: sectionID, before: nil)
+    }
+
     func embedImage(into sectionID: UUID) {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.png, .jpeg]
@@ -121,7 +125,7 @@ final class EditorStore: ObservableObject {
 
         do {
             let data = try Data(contentsOf: url)
-            let format = resolveFormat(for: url)
+            let format = try resolveFormat(for: url)
             document = try transcoder.import(data, format: format, fileName: url.lastPathComponent)
             selectedSectionID = document.sections.first?.id
             selectedFormat = format
@@ -159,14 +163,15 @@ final class EditorStore: ObservableObject {
         document = pipeline.run(on: document)
     }
 
-    func resolveFormat(for url: URL) -> ContentFormat {
+    func resolveFormat(for url: URL) throws -> ContentFormat {
         switch url.pathExtension.lowercased() {
         case "md", "markdown": return .markdown
         case "txt": return .txt
         case "rtf": return .rtf
         case "pdf": return .pdf
         case "html", "htm": return .html
-        default: return .javascript
+        case "js", "mjs", "cjs": return .javascript
+        default: throw EditorStoreError.unsupportedImportFormat(url.pathExtension)
         }
     }
 
@@ -178,6 +183,17 @@ final class EditorStore: ObservableObject {
         case .pdf: return .pdf
         case .html: return .html
         case .javascript: return .javascript
+        }
+    }
+}
+
+enum EditorStoreError: LocalizedError {
+    case unsupportedImportFormat(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedImportFormat(let pathExtension):
+            return "Unsupported import format: \(pathExtension.isEmpty ? "unknown file type" : pathExtension)"
         }
     }
 }

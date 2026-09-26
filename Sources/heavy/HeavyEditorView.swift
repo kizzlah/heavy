@@ -104,6 +104,8 @@ struct HeavyEditorView: View {
 
     private var aiPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Text("AI & MCP")
+                .font(.headline)
             Toggle("Enable AI", isOn: Binding(
                 get: { store.document.aiConfiguration.isEnabled },
                 set: {
@@ -231,9 +233,17 @@ private struct BlockCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(block.style.rawValue.capitalized)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Text(block.style.rawValue.capitalized)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Move to End") {
+                    store.moveBlockToEnd(sectionID: sectionID, blockID: block.id)
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+            }
 
             switch block.style {
             case .heading:
