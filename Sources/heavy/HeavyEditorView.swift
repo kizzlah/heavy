@@ -208,6 +208,8 @@ private struct SectionEditorView: View {
             .foregroundStyle(.secondary)
             .frame(height: 72)
             .overlay(Text("Drop blocks here to append"))
+            .accessibilityLabel("Append block drop target")
+            .accessibilityValue("Drops dragged blocks at the end of this section")
             .dropDestination(for: String.self) { items, _ in
                 guard let item = items.first else { return false }
                 store.moveBlock(payload: item, into: section.id, before: nil)

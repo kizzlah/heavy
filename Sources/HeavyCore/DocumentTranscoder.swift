@@ -176,7 +176,7 @@ public struct DocumentTranscoder: Sendable {
 
         for line in lines {
             if line.hasPrefix("## ") {
-                if !buffer.isEmpty || sections.isEmpty {
+                if !buffer.isEmpty || currentTitle != "Imported" {
                     sections.append((currentTitle, buffer))
                 }
                 currentTitle = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
@@ -186,7 +186,7 @@ public struct DocumentTranscoder: Sendable {
             }
         }
 
-        if !buffer.isEmpty || sections.isEmpty {
+        if !buffer.isEmpty || currentTitle != "Imported" || sections.isEmpty {
             sections.append((currentTitle, buffer))
         }
 
@@ -242,7 +242,7 @@ public struct DocumentTranscoder: Sendable {
 
     private func importHTML(_ html: String, fileName: String) -> EditorDocument {
         let normalized = html.replacingOccurrences(of: "\r", with: "")
-        let sectionPattern = #"<section>(.*?)</section>"#
+        let sectionPattern = #"<section\b[^>]*>(.*?)</section>"#
         let sectionRegex = try? NSRegularExpression(pattern: sectionPattern, options: [.dotMatchesLineSeparators, .caseInsensitive])
         let sectionMatches = sectionRegex?.matches(in: normalized, range: NSRange(normalized.startIndex..., in: normalized)) ?? []
 
@@ -350,7 +350,7 @@ public struct DocumentTranscoder: Sendable {
     }
 
     private func importJavaScript(_ script: String, fileName: String) throws -> EditorDocument {
-        let pattern = #"export const heavyDocument = (\{.*\});?"#
+        let pattern = #"export\s+(?:const|let|var)\s+heavyDocument\s*=\s*(\{.*\})\s*;?"#
         guard let json = extractFirstMatch(in: script, pattern: pattern, options: [.dotMatchesLineSeparators]) else {
             throw TranscoderError.invalidJavaScriptPayload
         }
