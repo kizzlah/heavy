@@ -88,6 +88,21 @@ import Testing
     #expect(imported == document)
 }
 
+@Test func javascriptImportSupportsAlternateDeclarationShapes() throws {
+    let document = EditorDocument.sample()
+    let encoder = JSONEncoder()
+    let json = String(decoding: try encoder.encode(document), as: UTF8.self)
+    let script = """
+    const prefix = { ready: true };
+    let heavyDocument = \(json);
+    console.log(prefix.ready);
+    """
+
+    let imported = try DocumentTranscoder().import(Data(script.utf8), format: .javascript, fileName: "heavy.js")
+
+    #expect(imported == document)
+}
+
 @Test func movingBlockAcrossSectionsReordersDocument() {
     var document = EditorDocument(
         title: "Draft",

@@ -110,7 +110,8 @@ public struct DocumentTranscoder: Sendable {
         case .checklist:
             return "- [\(block.checked ? "x" : " ")] \(block.text)"
         case .code:
-            return "```\n\(block.text)\n```"
+            let fence = "```\(block.codeLanguage?.isEmpty == false ? block.codeLanguage! : "")"
+            return "\(fence)\n\(block.text)\n```"
         case .image:
             if let image = block.image {
                 return "![\(image.filename)](\(image.source ?? image.filename))"
@@ -131,7 +132,8 @@ public struct DocumentTranscoder: Sendable {
             let checked = block.checked ? " checked" : ""
             return "<label><input type=\"checkbox\" disabled\(checked)> \(escapeHTML(block.text))</label>"
         case .code:
-            return "<pre><code>\(escapeHTML(block.text))</code></pre>"
+            let attribute = block.codeLanguage.map { " data-language=\"\(escapeHTML($0))\"" } ?? ""
+            return "<pre><code\(attribute)>\(escapeHTML(block.text))</code></pre>"
         case .image:
             guard let image = block.image else { return "<figure></figure>" }
             if let source = image.source, image.data.isEmpty {
@@ -205,19 +207,23 @@ public struct DocumentTranscoder: Sendable {
         var blocks: [ContentBlock] = []
         var codeBuffer: [String] = []
         var isInsideCodeFence = false
+        var codeLanguage: String?
 
         for rawLine in lines {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
 
             if isMarkdown && isInsideCodeFence && line == "```" {
-                blocks.append(ContentBlock(style: .code, text: codeBuffer.joined(separator: "\n")))
+                blocks.append(ContentBlock(style: .code, text: codeBuffer.joined(separator: "\n"), codeLanguage: codeLanguage))
                 codeBuffer.removeAll()
                 isInsideCodeFence = false
+                codeLanguage = nil
                 continue
             }
 
             if isMarkdown && !isInsideCodeFence && line.hasPrefix("```") {
                 isInsideCodeFence = true
+                let infoString = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                codeLanguage = infoString.isEmpty ? nil : infoString
                 continue
             }
 
@@ -245,7 +251,7 @@ public struct DocumentTranscoder: Sendable {
         }
 
         if isInsideCodeFence, !codeBuffer.isEmpty {
-            blocks.append(ContentBlock(style: .code, text: codeBuffer.joined(separator: "\n")))
+            blocks.append(ContentBlock(style: .code, text: codeBuffer.joined(separator: "\n"), codeLanguage: codeLanguage))
         }
 
         if blocks.isEmpty {
@@ -277,27 +283,31 @@ public struct DocumentTranscoder: Sendable {
     }
 
     private func parseHTMLBlocks(from html: String) -> [ContentBlock] {
-        let pattern = #"<h3>.*?</h3>|<blockquote>.*?</blockquote>|<pre><code>.*?</code></pre>|<p>.*?</p>|<label><input type=\"checkbox\" disabled(?: checked)?>.*?</label>|<figure>.*?</figure>"#
+        let pattern = #"<h3\b[^>]*>.*?</h3>|<blockquote\b[^>]*>.*?</blockquote>|<pre\b[^>]*>\s*<code\b[^>]*>.*?</code>\s*</pre>|<p\b[^>]*>.*?</p>|<label\b[^>]*>\s*<input\b[^>]*type=\"checkbox\"[^>]*>.*?</label>|<figure\b[^>]*>.*?</figure>"#
         let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators, .caseInsensitive])
         let matches = regex?.matches(in: html, range: NSRange(html.startIndex..., in: html)) ?? []
         var blocks: [ContentBlock] = []
         for match in matches {
             guard let range = Range(match.range, in: html) else { continue }
             let fragment = String(html[range])
-            if fragment.lowercased().hasPrefix("<h3>") {
+            if fragment.lowercased().hasPrefix("<h3") {
                 blocks.append(ContentBlock(style: .heading, text: decodeHTML(stripWrappingTag(from: fragment, tag: "h3"))))
-            } else if fragment.lowercased().hasPrefix("<blockquote>") {
+            } else if fragment.lowercased().hasPrefix("<blockquote") {
                 blocks.append(ContentBlock(style: .quote, text: decodeHTML(stripWrappingTag(from: fragment, tag: "blockquote"))))
-            } else if fragment.lowercased().hasPrefix("<pre><code>") {
-                blocks.append(ContentBlock(style: .code, text: decodeHTML(fragment.replacingOccurrences(of: "<pre><code>", with: "").replacingOccurrences(of: "</code></pre>", with: ""))))
-            } else if fragment.lowercased().hasPrefix("<p>") {
+            } else if fragment.lowercased().hasPrefix("<pre") {
+                let language = extractFirstMatch(in: fragment, pattern: #"data-language=\"(.*?)\""#)
+                let code = fragment
+                    .replacingOccurrences(of: #"<pre\b[^>]*>\s*<code\b[^>]*>"#, with: "", options: [.regularExpression, .caseInsensitive])
+                    .replacingOccurrences(of: #"</code>\s*</pre>"#, with: "", options: [.regularExpression, .caseInsensitive])
+                blocks.append(ContentBlock(style: .code, text: decodeHTML(code), codeLanguage: language))
+            } else if fragment.lowercased().hasPrefix("<p") {
                 blocks.append(ContentBlock(style: .paragraph, text: decodeHTML(stripWrappingTag(from: fragment, tag: "p"))))
-            } else if fragment.lowercased().hasPrefix("<label>") {
-                let checked = fragment.contains(" checked")
-                let text = fragment.replacingOccurrences(of: #"<label><input type=\"checkbox\" disabled(?: checked)?>\s*"#, with: "", options: .regularExpression)
+            } else if fragment.lowercased().hasPrefix("<label") {
+                let checked = fragment.range(of: #"\bchecked\b"#, options: .regularExpression) != nil
+                let text = fragment.replacingOccurrences(of: #"<label\b[^>]*>\s*<input\b[^>]*type=\"checkbox\"[^>]*>\s*"#, with: "", options: .regularExpression)
                     .replacingOccurrences(of: "</label>", with: "")
                 blocks.append(ContentBlock(style: .checklist, text: decodeHTML(text), checked: checked))
-            } else if fragment.lowercased().hasPrefix("<figure>"), let imageBlock = parseHTMLImageBlock(from: fragment) {
+            } else if fragment.lowercased().hasPrefix("<figure"), let imageBlock = parseHTMLImageBlock(from: fragment) {
                 blocks.append(imageBlock)
             }
         }
@@ -321,8 +331,8 @@ public struct DocumentTranscoder: Sendable {
 
     private func stripWrappingTag(from fragment: String, tag: String) -> String {
         fragment
-            .replacingOccurrences(of: "<\(tag)>", with: "", options: [.caseInsensitive])
-            .replacingOccurrences(of: "</\(tag)>", with: "", options: [.caseInsensitive])
+            .replacingOccurrences(of: #"^<\#(tag)\b[^>]*>"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"</\#(tag)>$"#, with: "", options: [.regularExpression, .caseInsensitive])
     }
 
     private func parseMarkdownImageReference(in line: String) -> (filename: String, source: String) {
@@ -377,7 +387,11 @@ public struct DocumentTranscoder: Sendable {
         }
 
         let decoder = JSONDecoder()
-        return try decoder.decode(EditorDocument.self, from: Data(json.utf8))
+        var document = try decoder.decode(EditorDocument.self, from: Data(json.utf8))
+        if document.title.isEmpty {
+            document.title = sanitizedTitle(fileName)
+        }
+        return document
     }
 
     private func extractFirstMatch(in input: String, pattern: String, options: NSRegularExpression.Options = []) -> String? {
@@ -417,7 +431,7 @@ public struct DocumentTranscoder: Sendable {
                     stringDelimiter = nil
                 }
             } else {
-                if character == "\"" || character == "'" {
+                if character == "\"" {
                     stringDelimiter = character
                 } else if character == "{" {
                     depth += 1

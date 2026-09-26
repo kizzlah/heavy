@@ -116,6 +116,8 @@ final class EditorStore: ObservableObject {
             .rtf,
             .pdf,
             .html,
+            .png,
+            .jpeg,
             UTType(filenameExtension: "md"),
             UTType(filenameExtension: "js"),
         ].compactMap { $0 }
@@ -124,6 +126,10 @@ final class EditorStore: ObservableObject {
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
+            if let imageFormat = resolveImageFormat(for: url) {
+                try importImage(at: url, format: imageFormat)
+                return
+            }
             let data = try Data(contentsOf: url)
             let format = try resolveFormat(for: url)
             document = try transcoder.import(data, format: format, fileName: url.lastPathComponent)
@@ -180,6 +186,26 @@ final class EditorStore: ObservableObject {
         case "js", "mjs", "cjs": return .javascript
         default: throw EditorStoreError.unsupportedImportFormat(url.pathExtension)
         }
+    }
+
+    func resolveImageFormat(for url: URL) -> ImageFormat? {
+        switch url.pathExtension.lowercased() {
+        case "png": return .png
+        case "jpg", "jpeg": return .jpg
+        default: return nil
+        }
+    }
+
+    func importImage(at url: URL, format: ImageFormat) throws {
+        let data = try Data(contentsOf: url)
+        let block = ContentBlock(style: .image, image: EmbeddedImage(filename: url.lastPathComponent, format: format, data: data))
+        let section = ContentSection(title: sanitizedSectionTitle(for: url), blocks: [block])
+        document = EditorDocument(title: sanitizedSectionTitle(for: url), sections: [section], aiConfiguration: document.aiConfiguration)
+        selectedSectionID = section.id
+    }
+
+    func sanitizedSectionTitle(for url: URL) -> String {
+        url.deletingPathExtension().lastPathComponent
     }
 
     func contentType(for format: ContentFormat) -> UTType {

@@ -38,6 +38,7 @@ public struct ContentBlock: Identifiable, Codable, Equatable, Sendable {
     public var style: BlockStyle
     public var text: String
     public var checked: Bool
+    public var codeLanguage: String?
     public var image: EmbeddedImage?
 
     public init(
@@ -45,12 +46,14 @@ public struct ContentBlock: Identifiable, Codable, Equatable, Sendable {
         style: BlockStyle,
         text: String = "",
         checked: Bool = false,
+        codeLanguage: String? = nil,
         image: EmbeddedImage? = nil
     ) {
         self.id = id
         self.style = style
         self.text = text
         self.checked = checked
+        self.codeLanguage = codeLanguage
         self.image = image
     }
 }
@@ -227,7 +230,7 @@ public extension EditorDocument {
                     title: "Research",
                     blocks: [
                         ContentBlock(style: .quote, text: "Great writing tools should disappear behind the work."),
-                        ContentBlock(style: .code, text: "export const note = 'Portable content';"),
+                        ContentBlock(style: .code, text: "export const note = 'Portable content';", codeLanguage: "javascript"),
                     ]
                 ),
             ]
