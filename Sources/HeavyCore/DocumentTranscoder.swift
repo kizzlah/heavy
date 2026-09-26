@@ -372,12 +372,7 @@ public struct DocumentTranscoder: Sendable {
         let altText = components.first?.replacingOccurrences(of: "![", with: "") ?? "image"
         let source = components.count > 1 ? components[1].dropLast() : Substring(altText)
         let sourceString = String(source)
-        let filename: String
-        if let remoteURL = URL(string: sourceString), let lastPathComponent = remoteURL.pathComponents.last, !lastPathComponent.isEmpty {
-            filename = lastPathComponent
-        } else {
-            filename = sourceString.split(separator: "/").last.map(String.init) ?? sourceString
-        }
+        let filename = filenameFromImageSource(sourceString)
         return (filename.isEmpty ? altText : filename, sourceString)
     }
 
@@ -396,7 +391,7 @@ public struct DocumentTranscoder: Sendable {
         guard let source = extractFirstMatch(in: fragment, pattern: #"src=\"(.*?)\""#) else {
             return nil
         }
-        let alt = extractFirstMatch(in: fragment, pattern: #"alt=\"(.*?)\""#) ?? URL(fileURLWithPath: source).lastPathComponent
+        let alt = extractFirstMatch(in: fragment, pattern: #"alt=\"(.*?)\""#) ?? filenameFromImageSource(source)
         let filename = decodeHTML(alt.isEmpty ? "image" : alt)
 
         if source.hasPrefix("data:"),
@@ -445,9 +440,10 @@ public struct DocumentTranscoder: Sendable {
 
     private func extractHeavyDocumentJSON(from script: String) -> String? {
         let declarationPattern = #"(?:export\s+)?(?:const|let|var)\s+heavyDocument\s*="#
+        let scrubbedScript = maskJavaScriptCommentsAndStrings(in: script)
         let regex = try? NSRegularExpression(pattern: declarationPattern)
-        guard let match = regex?.firstMatch(in: script, range: NSRange(script.startIndex..., in: script)),
-              let declarationRange = Range(match.range, in: script) else {
+        guard let match = regex?.firstMatch(in: scrubbedScript, range: NSRange(scrubbedScript.startIndex..., in: scrubbedScript)),
+              let declarationRange = Range(match.range, in: scrubbedScript) else {
             return nil
         }
 
@@ -538,6 +534,83 @@ public struct DocumentTranscoder: Sendable {
         }
 
         return index
+    }
+
+    private func maskJavaScriptCommentsAndStrings(in script: String) -> String {
+        var characters = Array(script)
+        var index = 0
+        var stringDelimiter: Character?
+        var escaping = false
+
+        while index < characters.count {
+            let character = characters[index]
+
+            if let delimiter = stringDelimiter {
+                characters[index] = " "
+                if escaping {
+                    escaping = false
+                } else if character == "\\" {
+                    escaping = true
+                } else if character == delimiter {
+                    stringDelimiter = nil
+                }
+                index += 1
+                continue
+            }
+
+            if character == "\"" || character == "'" {
+                stringDelimiter = character
+                characters[index] = " "
+                index += 1
+                continue
+            }
+
+            if character == "/", index + 1 < characters.count {
+                if characters[index + 1] == "/" {
+                    characters[index] = " "
+                    characters[index + 1] = " "
+                    index += 2
+                    while index < characters.count, characters[index] != "\n" {
+                        characters[index] = " "
+                        index += 1
+                    }
+                    continue
+                }
+
+                if characters[index + 1] == "*" {
+                    characters[index] = " "
+                    characters[index + 1] = " "
+                    index += 2
+                    while index + 1 < characters.count {
+                        if characters[index] == "*", characters[index + 1] == "/" {
+                            characters[index] = " "
+                            characters[index + 1] = " "
+                            index += 2
+                            break
+                        }
+                        characters[index] = " "
+                        index += 1
+                    }
+                    continue
+                }
+            }
+
+            index += 1
+        }
+
+        return String(characters)
+    }
+
+    private func filenameFromImageSource(_ source: String) -> String {
+        if source.hasPrefix("data:") {
+            return "embedded-image"
+        }
+
+        if let remoteURL = URL(string: source), let lastPathComponent = remoteURL.pathComponents.last, !lastPathComponent.isEmpty {
+            return lastPathComponent
+        }
+
+        return source.split(separator: "/").last.map(String.init) ?? source
     }
 
     private func sanitizedTitle(_ fileName: String) -> String {

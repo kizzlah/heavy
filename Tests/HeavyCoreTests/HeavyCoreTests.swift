@@ -11,8 +11,10 @@ import Testing
                 blocks: [
                     ContentBlock(style: .heading, text: "Welcome"),
                     ContentBlock(style: .code, text: "print(\"Heavy\")", codeLanguage: "swift"),
+                    ContentBlock(style: .quote, text: "Quoted"),
                     ContentBlock(style: .checklist, text: "Ship build", checked: true),
                     ContentBlock(style: .checklist, text: "Review notes", checked: false),
+                    ContentBlock(style: .image, image: EmbeddedImage(filename: "cover.png", format: .png, data: Data(), source: "https://example.com/cover.png")),
                 ]
             )
         ]
@@ -23,8 +25,10 @@ import Testing
     #expect(markdown.contains("## Intro"))
     #expect(markdown.contains("### Welcome"))
     #expect(markdown.contains("```swift"))
+    #expect(markdown.contains("> Quoted"))
     #expect(markdown.contains("- [x] Ship build"))
     #expect(markdown.contains("- [ ] Review notes"))
+    #expect(markdown.contains("![cover.png](https://example.com/cover.png)"))
 }
 
 @Test func markdownImportPreservesFencedCodeBlocks() throws {
@@ -104,6 +108,24 @@ import Testing
     let imported = try DocumentTranscoder().import(Data(script.utf8), format: .javascript, fileName: "heavy.js")
 
     #expect(imported == document)
+}
+
+@Test func htmlImportPreservesImageSources() throws {
+    let html = """
+    <section>
+      <h2>Gallery</h2>
+      <figure><img src="https://example.com/path/cover.png"></figure>
+      <figure><img alt="Inline" src="data:image/png;base64,iVBORw0KGgo="></figure>
+    </section>
+    """
+
+    let document = try DocumentTranscoder().import(Data(html.utf8), format: .html, fileName: "gallery.html")
+
+    #expect(document.sections[0].blocks.count == 2)
+    #expect(document.sections[0].blocks[0].image?.source == "https://example.com/path/cover.png")
+    #expect(document.sections[0].blocks[0].image?.filename == "cover.png")
+    #expect(document.sections[0].blocks[1].image?.filename == "Inline")
+    #expect(document.sections[0].blocks[1].image?.format == .png)
 }
 
 @Test func movingBlockAcrossSectionsReordersDocument() {

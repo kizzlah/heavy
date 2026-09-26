@@ -205,7 +205,8 @@ final class EditorStore: ObservableObject {
             title: sanitizedSectionTitle(for: url),
             sections: [section],
             aiConfiguration: document.aiConfiguration,
-            createdAt: document.createdAt
+            createdAt: document.createdAt,
+            updatedAt: document.updatedAt
         )
         selectedSectionID = section.id
     }
