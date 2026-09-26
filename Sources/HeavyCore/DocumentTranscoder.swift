@@ -276,7 +276,7 @@ public struct DocumentTranscoder: Sendable {
         }
 
         if sections.isEmpty {
-            return EditorDocument(title: sanitizedTitle(fileName), sections: [ContentSection(title: "Imported", blocks: [ContentBlock(style: .paragraph, text: decodeHTML(stripHTML(from: html)))])])
+            return EditorDocument(title: sanitizedTitle(fileName), sections: [ContentSection(title: "Imported", blocks: [ContentBlock(style: .paragraph, text: decodeHTML(stripHTML(from: normalizedPlainTextHTML(from: html))))])])
         }
 
         return EditorDocument(title: sanitizedTitle(fileName), sections: sections)
@@ -321,12 +321,44 @@ public struct DocumentTranscoder: Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private func normalizedPlainTextHTML(from html: String) -> String {
+        html
+            .replacingOccurrences(of: #"<br\s*/?>"#, with: "\n", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"</(p|div|li|section|article|h[1-6]|blockquote|pre)>"#, with: "\n", options: [.regularExpression, .caseInsensitive])
+    }
+
     private func decodeHTML(_ value: String) -> String {
-        value
+        var decoded = value
             .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&apos;", with: "'")
+            .replacingOccurrences(of: "&#39;", with: "'")
             .replacingOccurrences(of: "&gt;", with: ">")
             .replacingOccurrences(of: "&lt;", with: "<")
             .replacingOccurrences(of: "&amp;", with: "&")
+
+        let decimalRegex = try? NSRegularExpression(pattern: #"&#(\d+);"#)
+        for match in (decimalRegex?.matches(in: decoded, range: NSRange(decoded.startIndex..., in: decoded)) ?? []).reversed() {
+            guard let valueRange = Range(match.range(at: 1), in: decoded),
+                  let scalar = UInt32(decoded[valueRange]),
+                  let unicodeScalar = UnicodeScalar(scalar),
+                  let fullRange = Range(match.range, in: decoded) else {
+                continue
+            }
+            decoded.replaceSubrange(fullRange, with: String(Character(unicodeScalar)))
+        }
+
+        let hexRegex = try? NSRegularExpression(pattern: #"&#x([0-9A-Fa-f]+);"#)
+        for match in (hexRegex?.matches(in: decoded, range: NSRange(decoded.startIndex..., in: decoded)) ?? []).reversed() {
+            guard let valueRange = Range(match.range(at: 1), in: decoded),
+                  let scalar = UInt32(decoded[valueRange], radix: 16),
+                  let unicodeScalar = UnicodeScalar(scalar),
+                  let fullRange = Range(match.range, in: decoded) else {
+                continue
+            }
+            decoded.replaceSubrange(fullRange, with: String(Character(unicodeScalar)))
+        }
+
+        return decoded
     }
 
     private func stripWrappingTag(from fragment: String, tag: String) -> String {
@@ -356,10 +388,11 @@ public struct DocumentTranscoder: Sendable {
     }
 
     private func parseHTMLImageBlock(from fragment: String) -> ContentBlock? {
-        guard let alt = extractFirstMatch(in: fragment, pattern: #"alt=\"(.*?)\""#),
-              let source = extractFirstMatch(in: fragment, pattern: #"src=\"(.*?)\""#) else {
+        guard let source = extractFirstMatch(in: fragment, pattern: #"src=\"(.*?)\""#) else {
             return nil
         }
+        let alt = extractFirstMatch(in: fragment, pattern: #"alt=\"(.*?)\""#) ?? URL(fileURLWithPath: source).lastPathComponent
+        let filename = decodeHTML(alt.isEmpty ? "image" : alt)
 
         if source.hasPrefix("data:"),
            let commaIndex = source.firstIndex(of: ",") {
@@ -367,10 +400,10 @@ public struct DocumentTranscoder: Sendable {
             let base64 = String(source[source.index(after: commaIndex)...])
             let format: ImageFormat = metadata.contains("image/jpeg") ? .jpg : .png
             let data = Data(base64Encoded: base64) ?? Data()
-            return ContentBlock(style: .image, image: EmbeddedImage(filename: decodeHTML(alt), format: format, data: data))
+            return ContentBlock(style: .image, image: EmbeddedImage(filename: filename, format: format, data: data))
         }
 
-        return ContentBlock(style: .image, image: EmbeddedImage(filename: decodeHTML(alt), format: inferredImageFormat(from: source), data: Data(), source: source))
+        return ContentBlock(style: .image, image: EmbeddedImage(filename: filename, format: inferredImageFormat(from: source), data: Data(), source: source))
     }
 
     private func exportJavaScript(_ document: EditorDocument) throws -> Data {
@@ -409,11 +442,32 @@ public struct DocumentTranscoder: Sendable {
         let declarationPattern = #"(?:export\s+)?(?:const|let|var)\s+heavyDocument\s*="#
         let regex = try? NSRegularExpression(pattern: declarationPattern)
         guard let match = regex?.firstMatch(in: script, range: NSRange(script.startIndex..., in: script)),
-              let declarationRange = Range(match.range, in: script),
-              let objectStart = script[declarationRange.upperBound...].firstIndex(of: "{") else {
+              let declarationRange = Range(match.range, in: script) else {
             return nil
         }
 
+        var cursor = skipJavaScriptTrivia(in: script, from: declarationRange.upperBound)
+        let isWrappedInParentheses = cursor < script.endIndex && script[cursor] == "("
+        if isWrappedInParentheses {
+            cursor = skipJavaScriptTrivia(in: script, from: script.index(after: cursor))
+        }
+
+        guard cursor < script.endIndex, script[cursor] == "{",
+              let json = extractBalancedJSONObject(in: script, from: cursor) else {
+            return nil
+        }
+
+        if isWrappedInParentheses {
+            let trailing = skipJavaScriptTrivia(in: script, from: json.endIndex)
+            guard trailing < script.endIndex, script[trailing] == ")" else {
+                return nil
+            }
+        }
+
+        return json.payload
+    }
+
+    private func extractBalancedJSONObject(in script: String, from objectStart: String.Index) -> (payload: String, endIndex: String.Index)? {
         var depth = 0
         var currentIndex = objectStart
         var isEscaping = false
@@ -439,7 +493,7 @@ public struct DocumentTranscoder: Sendable {
                     depth -= 1
                     if depth == 0 {
                         let endIndex = script.index(after: currentIndex)
-                        return String(script[objectStart..<endIndex])
+                        return (String(script[objectStart..<endIndex]), endIndex)
                     }
                 }
             }
@@ -448,6 +502,37 @@ public struct DocumentTranscoder: Sendable {
         }
 
         return nil
+    }
+
+    private func skipJavaScriptTrivia(in script: String, from start: String.Index) -> String.Index {
+        var index = start
+
+        while index < script.endIndex {
+            if script[index].isWhitespace {
+                index = script.index(after: index)
+                continue
+            }
+
+            if script[index] == "/", script.index(after: index) < script.endIndex {
+                let nextIndex = script.index(after: index)
+                if script[nextIndex] == "/" {
+                    index = script[index...].firstIndex(of: "\n") ?? script.endIndex
+                    continue
+                }
+
+                if script[nextIndex] == "*" {
+                    guard let range = script.range(of: "*/", range: nextIndex..<script.endIndex) else {
+                        return script.endIndex
+                    }
+                    index = range.upperBound
+                    continue
+                }
+            }
+
+            break
+        }
+
+        return index
     }
 
     private func sanitizedTitle(_ fileName: String) -> String {

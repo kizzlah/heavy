@@ -143,7 +143,7 @@ final class EditorStore: ObservableObject {
     func exportDocument() {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [contentType(for: selectedFormat)]
-        panel.nameFieldStringValue = "\(document.title).\(selectedFormat.fileExtension)"
+        panel.nameFieldStringValue = "\(sanitizedFileName(document.title)).\(selectedFormat.fileExtension)"
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
@@ -206,6 +206,12 @@ final class EditorStore: ObservableObject {
 
     func sanitizedSectionTitle(for url: URL) -> String {
         url.deletingPathExtension().lastPathComponent
+    }
+
+    func sanitizedFileName(_ value: String) -> String {
+        let invalidCharacters = CharacterSet(charactersIn: "/:\\")
+        let cleaned = value.components(separatedBy: invalidCharacters).joined(separator: "-").trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? "Heavy Document" : cleaned
     }
 
     func contentType(for format: ContentFormat) -> UTType {

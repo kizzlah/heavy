@@ -23,7 +23,7 @@ struct HeavyEditorView: View {
                         Text(format.rawValue.uppercased()).tag(format)
                     }
                 }
-                .frame(width: 120)
+                .frame(minWidth: 120)
                 Button("Export", action: store.exportDocument)
                 Button("Run Skill", action: store.runSelectedSkill)
             }
@@ -68,7 +68,7 @@ struct HeavyEditorView: View {
                         } label: {
                             HStack {
                                 VStack(alignment: .leading) {
-                                    Text(section.title)
+                                    Text(section.title.isEmpty ? "Untitled Section" : section.title)
                                         .font(.headline)
                                     Text("\(section.blocks.count) blocks")
                                         .font(.caption)
@@ -80,6 +80,7 @@ struct HeavyEditorView: View {
                             .background(store.selectedSectionID == section.id ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(section.title.isEmpty ? "Untitled Section" : section.title)
                         .draggable(DragPayload.section(section.id).rawValue)
                         .dropDestination(for: String.self) { items, _ in
                             guard let item = items.first else { return false }

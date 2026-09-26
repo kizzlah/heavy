@@ -66,7 +66,7 @@ public struct PromoteFirstParagraphProcessor: DocumentProcessor {
     public func process(document: EditorDocument) -> EditorDocument {
         var copy = document
         for sectionIndex in copy.sections.indices {
-            guard let firstTextBlockIndex = copy.sections[sectionIndex].blocks.firstIndex(where: { $0.style == .paragraph && !$0.text.isEmpty }) else {
+            guard let firstTextBlockIndex = copy.sections[sectionIndex].blocks.firstIndex(where: { $0.style == .paragraph && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
                 continue
             }
 
